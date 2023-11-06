@@ -32,12 +32,15 @@ class Getter(object):
         """
         if self.is_full():
             return
+        if self.redis.get_pause():
+            logger.info("pausing")
+            return
         for crawler in self.crawlers:
-            logger.info(f'crawler {crawler} to get proxy')
+            logger.info(f"crawler {crawler} to get proxy")
             for proxy in crawler.crawl():
                 self.redis.add(proxy)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     getter = Getter()
     getter.run()

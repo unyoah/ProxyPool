@@ -1,13 +1,14 @@
-import time
 import multiprocessing
-from proxypool.processors.server import app
+import time
+
+from loguru import logger
+import threading
 from proxypool.processors.getter import Getter
+from proxypool.processors.server import app, last_time_check
 from proxypool.processors.tester import Tester
 from proxypool.setting import APP_PROD_METHOD_GEVENT, APP_PROD_METHOD_MEINHELD, APP_PROD_METHOD_TORNADO, CYCLE_GETTER, CYCLE_TESTER, API_HOST, \
     API_THREADED, API_PORT, ENABLE_SERVER, IS_PROD, APP_PROD_METHOD, \
     ENABLE_GETTER, ENABLE_TESTER, IS_WINDOWS
-from loguru import logger
-
 
 if IS_WINDOWS:
     multiprocessing.freeze_support()
@@ -92,6 +93,8 @@ class Scheduler():
                 logger.error("unsupported APP_PROD_METHOD")
                 return
         else:
+            t = threading.Thread(target=last_time_check)
+            t.start()
             app.run(host=API_HOST, port=API_PORT, threaded=API_THREADED)
 
     def run(self):

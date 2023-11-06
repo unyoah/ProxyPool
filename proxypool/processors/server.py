@@ -1,9 +1,14 @@
+import time
+from datetime import datetime
+
 from flask import Flask, g
+from loguru import logger
+
+from proxypool.processors.getter import Getter
 from proxypool.storages.redis import RedisClient
-from proxypool.setting import API_HOST, API_PORT, API_THREADED, IS_DEV
+from proxypool.setting import API_HOST, API_PORT, API_THREADED, IS_DEV, CYCLE_GETTER
 
-
-__all__ = ['app']
+__all__ = ["app"]
 
 app = Flask(__name__)
 if IS_DEV:
@@ -15,21 +20,21 @@ def get_conn():
     get redis client object
     :return:
     """
-    if not hasattr(g, 'redis'):
+    if not hasattr(g, "redis"):
         g.redis = RedisClient()
     return g.redis
 
 
-@app.route('/')
+@app.route("/")
 def index():
     """
     get home page, you can define your own templates
     :return:
     """
-    return '<h2>Welcome to Proxy Pool System</h2>'
+    return "<h2>Welcome to Proxy Pool System</h2>"
 
 
-@app.route('/random')
+@app.route("/random")
 def get_proxy():
     """
     get a random proxy
@@ -39,7 +44,25 @@ def get_proxy():
     return conn.random().string()
 
 
-@app.route('/all')
+@app.route("/max")
+def get_max():
+    """
+    get a random proxy
+    :return: get a random proxy
+    """
+    conn = get_conn()
+    conn.last_access_time(time=datetime.timestamp(datetime.now()))
+    if conn.get_pause():
+        conn.set_pause(0)
+        try:
+            return conn.get_max().string()
+        except:
+            getter = Getter()
+            getter.run()
+    return conn.get_max().string()
+
+
+@app.route("/all")
 def get_proxy_all():
     """
     get a random proxy
@@ -47,15 +70,15 @@ def get_proxy_all():
     """
     conn = get_conn()
     proxies = conn.all()
-    proxies_string = ''
+    proxies_string = ""
     if proxies:
         for proxy in proxies:
-            proxies_string += str(proxy) + '\n'
+            proxies_string += str(proxy) + "\n"
 
     return proxies_string
 
 
-@app.route('/count')
+@app.route("/count")
 def get_count():
     """
     get the count of proxies
@@ -65,5 +88,57 @@ def get_count():
     return str(conn.count())
 
 
-if __name__ == '__main__':
+@app.route("/decrease/<proxy>")
+def decrease(proxy):
+    """
+    get the count of proxies
+    :return: count, int
+    """
+    conn = get_conn()
+    conn.decrease(proxy)
+    return str(conn.count())
+
+
+@app.route("/pause")
+def pause():
+    """
+    pause proxypool
+    :return: message
+    """
+    conn = get_conn()
+    conn.set_pause(1)
+    return "pause success"
+
+
+@app.route("/unpause")
+def unpause():
+    """
+    pause proxypool
+    :return: message
+    """
+    conn = get_conn()
+    conn.set_pause(0)
+    getter = Getter()
+    getter.run()
+    return "unpause success"
+
+@logger.catch
+def last_time_check():
+    duration = CYCLE_GETTER
+    conn = RedisClient()
+    logger.info(f"last time check duration: {duration}")
+    while True:
+        last_time = conn.get_last_access_time()
+        logger.info(f"last time check last time: {last_time}")
+        if last_time:
+            last_time = float(last_time)
+            now = datetime.timestamp(datetime.now())
+            rest_seconds = duration - (now - last_time)
+            logger.info(f"rest seconds: {rest_seconds}")
+            if now - last_time > duration:
+                conn.set_pause(1)
+        time.sleep(2)
+
+
+if __name__ == "__main__":
     app.run(host=API_HOST, port=API_PORT, threaded=API_THREADED)
